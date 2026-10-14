@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1.7
 # bats + jq + yq + shellcheck + git + openssl + sops + age.
-# Образ bats/bats идёт без этих утилит; CI-джобы проекта neinache ставили их при каждом запуске
-# (`apk add`), что на загруженных раннерах периодически упиралось в лимит времени джобы.
-# Тот же набор, что в .tests/Containerfile проекта neinache.
-# ENTRYPOINT и CMD базового образа не меняются: джобы GitLab CI переопределяют entrypoint сами.
+# The bats/bats image ships without these utilities; the neinache CI jobs used to install them
+# on every run (`apk add`), which on loaded runners periodically hit the job time limit.
+# Same set as .tests/Containerfile in the neinache project.
+# ENTRYPOINT and CMD of the base image are left untouched: GitLab CI jobs override the entrypoint themselves.
 
 ARG BATS_BASE=docker.io/bats/bats:1.14.0@sha256:5322b877351fda0cc435de8c6116de7d0a2ec79d7c680132a0ef329a633bc66f
 

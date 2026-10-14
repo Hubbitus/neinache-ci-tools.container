@@ -1,33 +1,31 @@
 # neinache-ci-tools
 
-Образ утилит для CI проекта neinache (внутри bats, поэтому тесты и проверки идут в нём же).
+Tools image for the neinache CI. It is [bats](https://github.com/bats-core/bats-core) with the utilities that tests and checks need: `jq`, `yq` (Alpine package `yq-go`), `shellcheck`, `git`, `openssl`, `sops` and `age`.
 
-[bats](https://github.com/bats-core/bats-core) с набором утилит, которые нужны тестам и проверкам CI:
-`jq`, `yq` (пакет `yq-go`), `shellcheck`, `git`, `openssl`, `sops`, `age`.
+Published as [`docker.io/hubbitus/neinache-ci-tools`](https://hub.docker.com/r/hubbitus/neinache-ci-tools).
 
-Опубликован: [`docker.io/hubbitus/neinache-ci-tools`](https://hub.docker.com/r/hubbitus/neinache-ci-tools).
+## Why
 
-Зачем: чтобы CI-джобы не ставили эти пакеты при каждом запуске. Установка из сети на загруженном раннере
-периодически зависала до лимита времени джобы.
+CI jobs used to install these packages on every run (`apk add`). On a loaded runner the download periodically stalled until the job time limit. The image is built once, and jobs only pull it (and the runner caches it).
 
-## Состав
+## Contents
 
-| Что            | Откуда                                                                                                  |
-|----------------|---------------------------------------------------------------------------------------------------------|
-| База           | `docker.io/bats/bats:1.14.0`, закреплена по digest (Alpine)                                             |
-| Утилиты        | `apk add --no-cache jq yq-go shellcheck git openssl sops age` — версии берутся из Alpine-ветки базы     |
-| ENTRYPOINT/CMD | как у базового образа (`/tini -- bash bats`); в GitLab CI задаётся `entrypoint: [""]`                    |
+| What           | Source                                                                                                     |
+|----------------|------------------------------------------------------------------------------------------------------------|
+| Base           | `docker.io/bats/bats:1.14.0`, pinned by digest (Alpine)                                                    |
+| Utilities      | `apk add --no-cache jq yq-go shellcheck git openssl sops age`, versions come from the base's Alpine branch |
+| ENTRYPOINT/CMD | unchanged from the base image (`/tini -- bash bats`); in GitLab CI set `entrypoint: [""]`                  |
 
-Точные версии утилит смотрите в логе шага `Print tool versions` последней сборки (`.github/workflows/build.yml`).
+Exact tool versions are printed by the `Print tool versions` step of the latest build (`.github/workflows/build.yml`).
 
-## Теги
+## Tags
 
-- `1.14.0-YYYYMMDD` — версия bats и дата сборки (публикуется при каждом push в `main`);
-- `<короткий sha>` — коммит сборки.
+- `1.14.0-YYYYMMDD`: bats version and build date, published on every push to `main`;
+- `<short sha>`: the commit that was built.
 
-В потребителях образ нужно закреплять по digest: `image: docker.io/hubbitus/neinache-ci-tools:1.14.0-YYYYMMDD@sha256:...`.
+Consumers should pin the image by digest: `docker.io/hubbitus/neinache-ci-tools:1.14.0-YYYYMMDD@sha256:...`.
 
-## Использование в GitLab CI
+## Usage in GitLab CI
 
 ```yaml
 image:
@@ -35,18 +33,18 @@ image:
   entrypoint: [""]
 ```
 
-## Сборка локально
+## Build locally
 
 ```bash
 podman build -t neinache-ci-tools:local .
 podman run --rm --entrypoint '' neinache-ci-tools:local sh -c 'jq --version && yq --version && shellcheck --version && git --version && openssl version && sops --version && age --version && bats --version'
 ```
 
-## Секреты
+## Secrets
 
-Workflow публикации ожидает в секретах репозитория учётные данные Docker Hub:
+The publish workflow expects Docker Hub credentials in the repository secrets:
 
 - `DOCKERHUB_USER`
 - `DOCKERHUB_TOKEN`
 
-В репозитории они не хранятся.
+They are not stored in this repository.
