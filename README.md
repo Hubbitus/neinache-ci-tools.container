@@ -46,6 +46,8 @@ podman run --rm --entrypoint '' neinache-ci-tools:local sh -c 'jq --version && y
 
 `pre-commit-hooks.bake.yaml` must list every non-local repository of the consumer's `.pre-commit-config.yaml` with the same `rev`: pre-commit clones all of them to read the hook manifests even when it runs a single hook id. The list is also written to `/opt/pre-commit-home/BAKED` (one `repo@rev` per line) so a consumer can compare it with its own config. If the consumer moves to another `rev`, pre-commit simply fetches that repository again at run time (network, as before) until this image is rebuilt with the new `rev`. `test/pre-commit-offline.sh` runs in the smoke job with `--network none` and proves the baked environment is enough: clean files pass, real violations fail.
 
+The baked `PRE_COMMIT_HOME` belongs to root (directories 0700, `db.db` 0600): the GitLab runner runs jobs as root, which works. As another user, pre-commit fails with `unable to open database file`; point `PRE_COMMIT_HOME` at a writable copy of it instead.
+
 ## Updating the image
 
 Manual: rebuild and publish with `workflow_dispatch` (or push to `main`) when the `bats/bats` digest, a tool, `PRE_COMMIT_VERSION` or the hook `rev` has to move, then bump the pin in the consumer. There is no scheduled rebuild on purpose: every rebuild is a new tag and a new merge request in the consumer.
