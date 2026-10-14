@@ -42,9 +42,9 @@ podman run --rm --entrypoint '' neinache-ci-tools:local sh -c 'jq --version && y
 
 ## Secrets
 
-The publish workflow expects Docker Hub credentials in the repository secrets:
+The publish workflow expects Docker Hub credentials in the repository settings:
 
-- `DOCKERHUB_USER`
-- `DOCKERHUB_TOKEN`
+- `DOCKERHUB_USER`: repository **variable** (the user name is not a secret);
+- `DOCKERHUB_TOKEN`: repository **secret**.
 
 They are not stored in this repository.
