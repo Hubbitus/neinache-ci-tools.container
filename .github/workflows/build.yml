@@ -35,15 +35,21 @@ jobs:
           set -euo pipefail
           docker run --rm --entrypoint '' neinache-ci-tools:smoke sh -c '
             jq --version; yq --version; shellcheck --version | sed -n 2p; git --version
-            openssl version; sops --version; age --version; bats --version'
+            openssl version; sops --version; age --version; bats --version; pre-commit --version; python3 --version'
 
       - name: Verify every tool runs and bats works
         run: |
           set -euo pipefail
           docker run --rm --entrypoint '' neinache-ci-tools:smoke sh -c '
-            for t in jq yq shellcheck git openssl sops age bats bash; do command -v "$t" >/dev/null || { echo "missing: $t"; exit 1; }; done
+            for t in jq yq shellcheck git openssl sops age bats bash pre-commit python3; do command -v "$t" >/dev/null || { echo "missing: $t"; exit 1; }; done
             printf "@test \"ok\" {\n  run jq -n \"1+1\"\n  [ \"\$output\" = \"2\" ]\n}\n" > /tmp/t.bats
             bats /tmp/t.bats'
+
+      - name: Verify pre-commit hooks run with no network
+        run: |
+          set -euo pipefail
+          docker run --rm --network none --entrypoint '' -v "$PWD:/repo:ro" \
+            neinache-ci-tools:smoke /repo/test/pre-commit-offline.sh
 
   build:
     runs-on: ubuntu-24.04
@@ -74,7 +80,7 @@ jobs:
         with:
           images: ${{ env.IMAGE }}
           tags: |
-            type=raw,value=${{ env.BATS_VERSION }}-{{date 'YYYYMMDD'}},enable={{is_default_branch}}
+            type=raw,value=${{ env.BATS_VERSION }}-{{date 'YYYYMMDDHHmm'}},enable={{is_default_branch}}
             type=sha,prefix=,format=short
 
       - name: Build and push

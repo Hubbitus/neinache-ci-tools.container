@@ -1,0 +1,9 @@
+# Hook environments baked into the image (see the Dockerfile). Keep repo, rev and hook ids equal to the
+# consumer's .pre-commit-config.yaml (neinache: pre-commit-hooks v6.0.0, the three generic hooks).
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
