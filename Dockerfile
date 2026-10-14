@@ -18,9 +18,10 @@ RUN apk add --no-cache jq yq-go shellcheck git openssl sops age python3
 # pre-commit lives in its own virtualenv, so it does not touch the system Python.
 # The hook environment is built at image build time into PRE_COMMIT_HOME (absolute, the same in every
 # container), so a job runs the hooks without cloning hook repositories or installing hook dependencies.
-# pre-commit-hooks.bake.yaml must name the same repo, rev and hook ids the consumer's .pre-commit-config.yaml
-# uses; if the consumer moves to another rev, the hook is simply fetched again at run time until this image
-# is rebuilt with the new rev.
+# pre-commit-hooks.bake.yaml must list every non-local repository of the consumer's .pre-commit-config.yaml with
+# the same rev (pre-commit clones all of them to read the manifests, even for a single hook id); the list is
+# also written to ${PRE_COMMIT_HOME}/BAKED so the consumer can compare. If the consumer moves to another rev,
+# that repository is simply fetched again at run time until this image is rebuilt with the new rev.
 ENV VIRTUAL_ENV=/opt/pre-commit-venv \
     PRE_COMMIT_HOME=/opt/pre-commit-home \
     PATH=/opt/pre-commit-venv/bin:${PATH}
@@ -30,5 +31,6 @@ RUN python3 -m venv "${VIRTUAL_ENV}" \
     && cd /tmp/bake \
     && git init -q \
     && pre-commit install-hooks \
+    && yq '.repos[] | .repo + "@" + .rev' .pre-commit-config.yaml | sort > "${PRE_COMMIT_HOME}/BAKED" \
     && cd / \
     && rm -rf /tmp/bake

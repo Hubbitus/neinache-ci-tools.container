@@ -1,5 +1,9 @@
-# Hook environments baked into the image (see the Dockerfile). Keep repo, rev and hook ids equal to the
-# consumer's .pre-commit-config.yaml (neinache: pre-commit-hooks v6.0.0, the three generic hooks).
+# Hook repositories baked into the image (see the Dockerfile). pre-commit clones EVERY repository of the
+# consumer's .pre-commit-config.yaml to read the hook manifests, even when only some hook ids are run, so
+# this file lists every non-local repository of the neinache config with the same rev:
+#   - pre-commit-hooks v6.0.0: the three generic hooks the pre-commit:hygiene job runs (python, own environment);
+#   - pre-commit-terraform v1.109.2: its hooks are shell scripts (no environment); only the clone is needed here.
+# The job compares the list in /opt/pre-commit-home/BAKED with its config and warns when they differ.
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -7,3 +11,10 @@ repos:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-yaml
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.109.2
+    hooks:
+      - id: terraform_fmt
+      - id: terraform_validate
+      - id: terraform_tflint
+      - id: terraform_trivy

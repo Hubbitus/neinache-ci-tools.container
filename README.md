@@ -10,13 +10,13 @@ CI jobs used to install these packages on every run (`apk add`, `apt-get`, `pip 
 
 ## Contents
 
-| What           | Source                                                                                                                                                                                                        |
-|----------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Base           | `docker.io/bats/bats:1.14.0`, pinned by digest (Alpine)                                                                                                                                                       |
-| Utilities      | `apk add --no-cache jq yq-go shellcheck git openssl sops age python3`, versions come from the base's Alpine branch                                                                                            |
-| pre-commit     | `pre-commit==4.7.0` in its own virtualenv (`/opt/pre-commit-venv`), pinned in the `Dockerfile`                                                                                                                |
-| Hook env       | `pre-commit install-hooks` at build time into `PRE_COMMIT_HOME=/opt/pre-commit-home`, from `pre-commit-hooks.bake.yaml` (`pre-commit-hooks` v6.0.0: `trailing-whitespace`, `end-of-file-fixer`, `check-yaml`) |
-| ENTRYPOINT/CMD | unchanged from the base image (`/tini -- bash bats`); in GitLab CI set `entrypoint: [""]`                                                                                                                     |
+| What           | Source                                                                                                                                                                                                                                                         |
+|----------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Base           | `docker.io/bats/bats:1.14.0`, pinned by digest (Alpine)                                                                                                                                                                                                        |
+| Utilities      | `apk add --no-cache jq yq-go shellcheck git openssl sops age python3`, versions come from the base's Alpine branch                                                                                                                                             |
+| pre-commit     | `pre-commit==4.7.0` in its own virtualenv (`/opt/pre-commit-venv`), pinned in the `Dockerfile`                                                                                                                                                                 |
+| Hook env       | `pre-commit install-hooks` at build time into `PRE_COMMIT_HOME=/opt/pre-commit-home`, from `pre-commit-hooks.bake.yaml` (`pre-commit-hooks` v6.0.0 with `trailing-whitespace`, `end-of-file-fixer`, `check-yaml`; `pre-commit-terraform` v1.109.2, clone only) |
+| ENTRYPOINT/CMD | unchanged from the base image (`/tini -- bash bats`); in GitLab CI set `entrypoint: [""]`                                                                                                                                                                      |
 
 Exact tool versions are printed by the `Print tool versions` step of the latest build (`.github/workflows/build.yml`).
 
@@ -44,7 +44,7 @@ podman run --rm --entrypoint '' neinache-ci-tools:local sh -c 'jq --version && y
 
 ## Pre-commit hook environment
 
-`pre-commit-hooks.bake.yaml` must name the same repository, `rev` and hook ids as the consumer's `.pre-commit-config.yaml`. If the consumer moves to another `rev`, pre-commit simply fetches that hook again at run time (network, as before) until this image is rebuilt with the new `rev`. `test/pre-commit-offline.sh` runs in the smoke job with `--network none` and proves the baked environment is enough: clean files pass, real violations fail.
+`pre-commit-hooks.bake.yaml` must list every non-local repository of the consumer's `.pre-commit-config.yaml` with the same `rev`: pre-commit clones all of them to read the hook manifests even when it runs a single hook id. The list is also written to `/opt/pre-commit-home/BAKED` (one `repo@rev` per line) so a consumer can compare it with its own config. If the consumer moves to another `rev`, pre-commit simply fetches that repository again at run time (network, as before) until this image is rebuilt with the new `rev`. `test/pre-commit-offline.sh` runs in the smoke job with `--network none` and proves the baked environment is enough: clean files pass, real violations fail.
 
 ## Updating the image
 
