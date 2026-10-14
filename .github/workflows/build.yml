@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  IMAGE: docker.io/hubbitus/bats-super
+  IMAGE: docker.io/hubbitus/neinache-ci-tools
   BATS_VERSION: 1.14.0
 
 jobs:
@@ -26,21 +26,21 @@ jobs:
           context: .
           platforms: linux/amd64
           load: true
-          tags: bats-super:smoke
+          tags: neinache-ci-tools:smoke
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Print tool versions
         run: |
           set -euo pipefail
-          docker run --rm --entrypoint '' bats-super:smoke sh -c '
+          docker run --rm --entrypoint '' neinache-ci-tools:smoke sh -c '
             jq --version; yq --version; shellcheck --version | sed -n 2p; git --version
             openssl version; sops --version; age --version; bats --version'
 
       - name: Verify every tool runs and bats works
         run: |
           set -euo pipefail
-          docker run --rm --entrypoint '' bats-super:smoke sh -c '
+          docker run --rm --entrypoint '' neinache-ci-tools:smoke sh -c '
             for t in jq yq shellcheck git openssl sops age bats bash; do command -v "$t" >/dev/null || { echo "missing: $t"; exit 1; }; done
             printf "@test \"ok\" {\n  run jq -n \"1+1\"\n  [ \"\$output\" = \"2\" ]\n}\n" > /tmp/t.bats
             bats /tmp/t.bats'
@@ -124,5 +124,5 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USER }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: hubbitus/bats-super
+          repository: hubbitus/neinache-ci-tools
           readme-filepath: ./README.md
