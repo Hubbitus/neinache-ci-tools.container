@@ -16,6 +16,7 @@ CI jobs used to install these packages on every run (`apk add`, `apt-get`, `pip 
 | Utilities      | `apk add --no-cache jq yq-go shellcheck git openssl sops age python3`, versions come from the base's Alpine branch                                                                                                                                             |
 | pre-commit     | `pre-commit==4.7.0` in its own virtualenv (`/opt/pre-commit-venv`), pinned in the `Dockerfile`                                                                                                                                                                 |
 | Hook env       | `pre-commit install-hooks` at build time into `PRE_COMMIT_HOME=/opt/pre-commit-home`, from `pre-commit-hooks.bake.yaml` (`pre-commit-hooks` v6.0.0 with `trailing-whitespace`, `end-of-file-fixer`, `check-yaml`; `pre-commit-terraform` v1.109.2, clone only) |
+| Mise JDK catalog | graalvm-community version index baked into `/opt/mise-cache` (`java_metadata_ga-*.msgpack.z` for x86_64/aarch64), built on `jdxcode/mise` (pinned), so `mise install java` needs no fetch from `mise-java.jdx.dev` |
 | ENTRYPOINT/CMD | unchanged from the base image (`/tini -- bash bats`); in GitLab CI set `entrypoint: [""]`                                                                                                                                                                      |
 
 Exact tool versions are printed by the `Print tool versions` step of the latest build (`.github/workflows/build.yml`).
@@ -39,7 +40,7 @@ image:
 
 ```bash
 podman build -t neinache-ci-tools:local .
-podman run --rm --entrypoint '' neinache-ci-tools:local sh -c 'jq --version && yq --version && shellcheck --version && git --version && openssl version && sops --version && age --version && bats --version'
+podman run --rm --entrypoint '' neinache-ci-tools:local sh -c 'jq --version && yq --version && shellcheck --version && git --version && openssl version && sops --version && age --version && bats --version && ls /opt/mise-cache/java'
 ```
 
 ## Pre-commit hook environment
@@ -47,6 +48,21 @@ podman run --rm --entrypoint '' neinache-ci-tools:local sh -c 'jq --version && y
 `pre-commit-hooks.bake.yaml` must list every non-local repository of the consumer's `.pre-commit-config.yaml` with the same `rev`: pre-commit clones all of them to read the hook manifests even when it runs a single hook id. The list is also written to `/opt/pre-commit-home/BAKED` (one `repo@rev` per line) so a consumer can compare it with its own config. If the consumer moves to another `rev`, pre-commit simply fetches that repository again at run time (network, as before) until this image is rebuilt with the new `rev`. `test/pre-commit-offline.sh` runs in the smoke job with `--network none` and proves the baked environment is enough: clean files pass, real violations fail.
 
 The baked `PRE_COMMIT_HOME` belongs to root (directories 0700, `db.db` 0600): the GitLab runner runs jobs as root, which works. As another user, pre-commit fails with `unable to open database file`; point `PRE_COMMIT_HOME` at a writable copy of it instead.
+
+## Mise JDK catalog
+
+The image carries the version index that `mise` uses to resolve `java = "graalvm-community-..."` in `mise.toml` (the file `mise` normally downloads from `https://mise-java.jdx.dev/jvm/ga/linux/<arch>.json`). It is built at image build time with the same `jdxcode/mise` release the consumer pins (`MISE_VERSION`, default `2026.10.11`), so the cache file name matches what that `mise` expects; the build runs once per target architecture, so both `amd64` and `arm64` catalogs are present.
+
+Path: `/opt/mise-cache` (also exposed as `MISE_JAVA_CACHE_DIR`). To use it in a GitLab CI job, seed the relocated cache before installing the toolchain, for example:
+
+```sh
+if [ -d "$MISE_JAVA_CACHE_DIR/java" ]; then
+  mkdir -p "$MISE_CACHE_DIR"
+  cp -a "$MISE_JAVA_CACHE_DIR/." "$MISE_CACHE_DIR/"
+fi
+```
+
+with `MISE_CACHE_DIR` and `MISE_DATA_DIR` set as the consumer already does. `mise install java` then resolves the version from the baked index; only the selected JDK archive is still fetched from its upstream (unless it too is baked in a later image). The cache is verified offline: `mise ls-remote java` succeeds against it with `--network none`.
 
 ## Updating the image
 

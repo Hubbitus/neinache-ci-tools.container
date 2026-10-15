@@ -7,6 +7,15 @@
 
 ARG BATS_BASE=docker.io/bats/bats:1.14.0@sha256:5322b877351fda0cc435de8c6116de7d0a2ec79d7c680132a0ef329a633bc66f
 
+# Bake mise's JDK version catalog (graalvm-community) at build time, so a CI job
+# running `mise install java` does not fetch https://mise-java.jdx.dev/... at job start.
+# Built on the official mise image pinned to the same version neinache's CI uses, so the
+# resulting cache file name matches what that mise expects.
+ARG MISE_VERSION=2026.10.11
+FROM docker.io/jdxcode/mise:${MISE_VERSION}-debian AS mise-cache
+RUN mkdir -p /opt/mise-cache && \
+    MISE_CACHE_DIR=/opt/mise-cache MISE_DATA_DIR=/tmp/mise-data mise ls-remote java >/dev/null
+
 FROM ${BATS_BASE}
 
 # Pinned like the base: a new pre-commit release can add behaviour that reddens a pipeline with no repository change.
@@ -34,3 +43,7 @@ RUN python3 -m venv "${VIRTUAL_ENV}" \
     && yq '.repos[] | .repo + "@" + .rev' .pre-commit-config.yaml | sort > "${PRE_COMMIT_HOME}/BAKED" \
     && cd / \
     && rm -rf /tmp/bake
+
+# Mise JDK version catalog baked above (see mise-cache stage).
+ENV MISE_JAVA_CACHE_DIR=/opt/mise-cache
+COPY --from=mise-cache /opt/mise-cache /opt/mise-cache
