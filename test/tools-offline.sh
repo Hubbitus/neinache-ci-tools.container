@@ -4,7 +4,7 @@
 set -eu
 
 for t in java python3 node pnpm kubectl yq helm kustomize argocd sops age lychee \
-         podman terraform tflint trivy go bats shellcheck jq git openssl pre-commit; do
+         podman terraform tflint trivy go bats shellcheck jq git openssl gawk pre-commit; do
   command -v "$t" >/dev/null || { echo "missing: $t"; exit 1; }
 done
 
@@ -31,6 +31,8 @@ shellcheck --version
 jq --version
 git --version
 openssl version
+# The hook calls `awk`. mawk must not be the one that answers.
+awk --version | head -n 1 | grep -q '^GNU Awk'
 pre-commit --version
 test -x "$JAVA_HOME/bin/native-image"
 
