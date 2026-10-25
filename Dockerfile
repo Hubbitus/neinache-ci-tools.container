@@ -21,8 +21,18 @@ ARG PRE_COMMIT_VERSION=4.7.0
 # jq has no mise pin in neinache. openssl is the one tls-store tests call.
 # Versions follow Debian 13 at the moment of the build; the base image digest
 # is what a rebuild moves when those packages must change.
+#
+# gawk, and /usr/bin/awk must be that gawk. Debian's awk is mawk. mawk reads
+# bytes, not characters, and the Cyrillic class plus a bounded repeat in
+# neinache's .pre-commit-hooks/secret-backend-mention-check.sh
+# (`[А-Яа-яЁё]` next to `SEP{1,3}`) makes it build an automaton that fills
+# the machine's RAM. The hook calls `awk`. GNU awk runs that script normally.
+# Sed would not be faster: the cost was compiling that one pattern, not
+# scanning the file. The same pattern-and-previous-line check in sed is the
+# same automaton, only harder to read.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends jq openssl ca-certificates \
+    && apt-get install -y --no-install-recommends jq openssl ca-certificates gawk \
+    && update-alternatives --set awk /usr/bin/gawk \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/neinache
