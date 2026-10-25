@@ -34,8 +34,9 @@ jobs:
         run: |
           set -euo pipefail
           docker run --rm --entrypoint '' neinache-ci-tools:smoke sh -c '
+            java -version; python3 --version; node --version; pnpm --version
             jq --version; yq --version; shellcheck --version | sed -n 2p; git --version
-            openssl version; sops --version; age --version; bats --version; pre-commit --version; python3 --version'
+            openssl version; sops --version; age --version; bats --version; pre-commit --version'
 
       - name: Verify every tool runs and bats works
         run: |
@@ -44,6 +45,12 @@ jobs:
             for t in jq yq shellcheck git openssl sops age bats bash pre-commit python3; do command -v "$t" >/dev/null || { echo "missing: $t"; exit 1; }; done
             printf "@test \"ok\" {\n  run jq -n \"1+1\"\n  [ \"\$output\" = \"2\" ]\n}\n" > /tmp/t.bats
             bats /tmp/t.bats'
+
+      - name: Verify mise tools run with no network
+        run: |
+          set -euo pipefail
+          docker run --rm --network none --entrypoint '' -v "$PWD:/repo:ro" \
+            neinache-ci-tools:smoke /repo/test/tools-offline.sh
 
       - name: Verify pre-commit hooks run with no network
         run: |

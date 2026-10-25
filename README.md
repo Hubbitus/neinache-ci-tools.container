@@ -1,23 +1,23 @@
 # neinache-ci-tools
 
-Tools image for the neinache CI. It is [bats](https://github.com/bats-core/bats-core) with the utilities that tests and checks need: `jq`, `yq` (Alpine package `yq-go`), `shellcheck`, `git`, `openssl`, `sops` and `age`, plus Python and [pre-commit](https://pre-commit.com) with a prebuilt hook environment.
+Tools image for the neinache CI. Debian image with every tool from neinache's `mise.toml` `[tools]` table already installed, plus `jq`, `git`, `openssl` and [pre-commit](https://pre-commit.com) with a prebuilt hook environment. Jobs do not download the toolchain at start.
 
 Published as [`docker.io/hubbitus/neinache-ci-tools`](https://hub.docker.com/r/hubbitus/neinache-ci-tools).
 
 ## Why
 
-CI jobs used to install these packages on every run (`apk add`, `apt-get`, `pip install`, cloning hook repositories). On a loaded runner the downloads periodically stalled until the job time limit. The image is built once, and jobs only pull it (and the runner caches it).
+CI jobs used to install packages and the mise toolchain on every run (`apk add`, `apt-get`, `pip install`, `mise install`, cloning hook repositories). On a loaded runner the downloads periodically stalled until the job time limit. The image is built once, and jobs only pull it (and the runner caches it). A pin in `mise.toml` stays stale here until the image is rebuilt.
 
 ## Contents
 
 | What           | Source                                                                                                                                                                                                                                                         |
 |----------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Base           | `docker.io/bats/bats:1.14.0`, pinned by digest (Alpine)                                                                                                                                                                                                        |
-| Utilities      | `apk add --no-cache jq yq-go shellcheck git openssl sops age python3`, versions come from the base's Alpine branch                                                                                                                                             |
+| Base           | `docker.io/jdxcode/mise:2026.10.15-debian`, pinned by digest (Debian 13, glibc). Alpine cannot run the glibc tool builds                                                                       |
+| Mise tools     | `mise install` of `mise.toml` at build time: java (GraalVM CE 25.0.2), python 3.15.0, node 24.21.0, pnpm 12.11.2, kubectl, yq, helm, kustomize, argocd, sops, age, lychee, podman 6.1.4, terraform 1.16.6, tflint, trivy, go 1.27.2, bats 1.14.0, shellcheck 0.11.0. Symlinked into `/opt/neinache/bin`, which is ahead of the mise shims. `JAVA_HOME=/opt/neinache/java-home`. `podman` is `podman-remote` under that name so Quarkus sees `podman version` |
+| Utilities      | `apt-get install jq openssl ca-certificates`. `git` comes with the mise base image                                                                                                                                                                              |
 | pre-commit     | `pre-commit==4.7.0` in its own virtualenv (`/opt/pre-commit-venv`), pinned in the `Dockerfile`                                                                                                                                                                 |
 | Hook env       | `pre-commit install-hooks` at build time into `PRE_COMMIT_HOME=/opt/pre-commit-home`, from `pre-commit-hooks.bake.yaml` (`pre-commit-hooks` v6.0.0 with `trailing-whitespace`, `end-of-file-fixer`, `check-yaml`; `pre-commit-terraform` v1.109.2, clone only) |
-| Mise JDK catalog | graalvm-community version index baked into `/opt/mise-cache` (`java_metadata_ga-*.msgpack.z` for x86_64/aarch64), built on `jdxcode/mise` (pinned), so `mise install java` needs no fetch from `mise-java.jdx.dev` |
-| ENTRYPOINT/CMD | unchanged from the base image (`/tini -- bash bats`); in GitLab CI set `entrypoint: [""]`                                                                                                                                                                      |
+| ENTRYPOINT/CMD | the mise base image sets none; in GitLab CI set `entrypoint: [""]`                                                                                                                                                                                             |
 
 Exact tool versions are printed by the `Print tool versions` step of the latest build (`.github/workflows/build.yml`).
 
@@ -40,7 +40,7 @@ image:
 
 ```bash
 podman build -t neinache-ci-tools:local .
-podman run --rm --entrypoint '' neinache-ci-tools:local sh -c 'jq --version && yq --version && shellcheck --version && git --version && openssl version && sops --version && age --version && bats --version && ls /opt/mise-cache/java'
+podman run --rm --network none --entrypoint '' -v "$PWD:/repo:ro" neinache-ci-tools:local /repo/test/tools-offline.sh
 ```
 
 ## Pre-commit hook environment
@@ -49,24 +49,9 @@ podman run --rm --entrypoint '' neinache-ci-tools:local sh -c 'jq --version && y
 
 The baked `PRE_COMMIT_HOME` belongs to root (directories 0700, `db.db` 0600): the GitLab runner runs jobs as root, which works. As another user, pre-commit fails with `unable to open database file`; point `PRE_COMMIT_HOME` at a writable copy of it instead.
 
-## Mise JDK catalog
-
-The image carries the version index that `mise` uses to resolve `java = "graalvm-community-..."` in `mise.toml` (the file `mise` normally downloads from `https://mise-java.jdx.dev/jvm/ga/linux/<arch>.json`). It is built at image build time with the same `jdxcode/mise` release the consumer pins (`MISE_VERSION`, default `2026.10.11`), so the cache file name matches what that `mise` expects; the build runs once per target architecture, so both `amd64` and `arm64` catalogs are present.
-
-Path: `/opt/mise-cache` (also exposed as `MISE_JAVA_CACHE_DIR`). To use it in a GitLab CI job, seed the relocated cache before installing the toolchain, for example:
-
-```sh
-if [ -d "$MISE_JAVA_CACHE_DIR/java" ]; then
-  mkdir -p "$MISE_CACHE_DIR"
-  cp -a "$MISE_JAVA_CACHE_DIR/." "$MISE_CACHE_DIR/"
-fi
-```
-
-with `MISE_CACHE_DIR` and `MISE_DATA_DIR` set as the consumer already does. `mise install java` then resolves the version from the baked index; only the selected JDK archive is still fetched from its upstream (unless it too is baked in a later image). The cache is verified offline: `mise ls-remote java` succeeds against it with `--network none`.
-
 ## Updating the image
 
-Manual: rebuild and publish with `workflow_dispatch` (or push to `main`) when the `bats/bats` digest, a tool, `PRE_COMMIT_VERSION` or the hook `rev` has to move, then bump the pin in the consumer. There is no scheduled rebuild on purpose: every rebuild is a new tag and a new merge request in the consumer.
+Manual: rebuild and publish with `workflow_dispatch` (or push to `main`) when the mise base digest, a pin in `mise.toml`, `PRE_COMMIT_VERSION` or a hook `rev` has to move, then bump the pin in the consumer. There is no scheduled rebuild on purpose: every rebuild is a new tag and a new merge request in the consumer. The tag prefix stays `1.14.0-` (the bats version this image installs) so the consumer's versioning rule keeps sorting newer builds later.
 
 ## Secrets
 
