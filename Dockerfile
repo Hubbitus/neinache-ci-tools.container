@@ -7,33 +7,22 @@
 # on PATH. /opt/neinache/bin is ahead of the mise shims, so a shim cannot
 # refetch a tool that is already baked.
 #
+# Two stages. The builder runs `mise install` and bakes the pre-commit hook
+# environment; the mise download cache (/mise/cache — the GraalVM/Node/Go
+# archives, hundreds of MB) dies with the builder instead of being unpacked by
+# every runner on every pull. The final image carries only /mise/installs,
+# /mise/shims, /opt/neinache (symlinks + the mise.toml they resolve against)
+# and the pre-commit venv/home.
+#
 # jq, git and openssl stay outside mise. git ships in the mise base image.
-# pre-commit and its hook repositories are still baked, same as before.
 
 ARG MISE_IMAGE=docker.io/jdxcode/mise:2026.10.15-debian@sha256:329c5517b4ce4e63cfbe619b4d49b4a4ffefa546d7c1d99d59f54043c38191bf
-
-FROM ${MISE_IMAGE}
-
 # Pinned like the base: a new pre-commit release can add behaviour that reddens a pipeline with no repository change.
 # Verified against PyPI 2026-10-15.
 ARG PRE_COMMIT_VERSION=4.7.0
 
-# jq has no mise pin in neinache. openssl is the one tls-store tests call.
-# Versions follow Debian 13 at the moment of the build; the base image digest
-# is what a rebuild moves when those packages must change.
-#
-# gawk, and /usr/bin/awk must be that gawk. Debian's awk is mawk. mawk reads
-# bytes, not characters, and the Cyrillic class plus a bounded repeat in
-# neinache's .pre-commit-hooks/secret-backend-mention-check.sh
-# (`[А-Яа-яЁё]` next to `SEP{1,3}`) makes it build an automaton that fills
-# the machine's RAM. The hook calls `awk`. GNU awk runs that script normally.
-# Sed would not be faster: the cost was compiling that one pattern, not
-# scanning the file. The same pattern-and-previous-line check in sed is the
-# same automaton, only harder to read.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends jq openssl ca-certificates gawk \
-    && update-alternatives --set awk /usr/bin/gawk \
-    && rm -rf /var/lib/apt/lists/*
+FROM ${MISE_IMAGE} AS builder
+ARG PRE_COMMIT_VERSION
 
 WORKDIR /opt/neinache
 COPY mise.toml .
@@ -71,6 +60,8 @@ RUN set -eu \
     && link podman-remote podman-remote \
     && ln -sfn "$(mise where java)" /opt/neinache/java-home
 
+# The baked symlinks must win over the shims for the bake below too: it runs
+# in /tmp/bake, where no mise.toml answers the shims.
 ENV JAVA_HOME=/opt/neinache/java-home \
     PATH="/opt/neinache/bin:/opt/neinache/java-home/bin:${PATH}"
 
@@ -97,8 +88,48 @@ RUN set -eu \
     && cd / \
     && rm -rf /tmp/bake
 
-# venv bin first so `pre-commit` resolves to the baked one. The mise tool bins
-# stay ahead of the shims.
-ENV PATH="/opt/pre-commit-venv/bin:${PATH}"
+FROM ${MISE_IMAGE}
+
+# jq has no mise pin in neinache. openssl is the one tls-store tests call.
+# Versions follow Debian 13 at the moment of the build; the base image digest
+# is what a rebuild moves when those packages must change.
+#
+# gawk, and /usr/bin/awk must be that gawk. Debian's awk is mawk. mawk reads
+# bytes, not characters, and the Cyrillic class plus a bounded repeat in
+# neinache's .pre-commit-hooks/secret-backend-mention-check.sh
+# (`[А-Яа-яЁё]` next to `SEP{1,3}`) makes it build an automaton that fills
+# the machine's RAM. The hook calls `awk`. GNU awk runs that script normally.
+# Sed would not be faster: the cost was compiling that one pattern, not
+# scanning the file. The same pattern-and-previous-line check in sed is the
+# same automaton, only harder to read.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends jq openssl ca-certificates gawk \
+    && update-alternatives --set awk /usr/bin/gawk \
+    && rm -rf /var/lib/apt/lists/*
+
+# The baked toolchain: installed tools, their shims, and /opt/neinache with
+# the bin symlinks (absolute targets into /mise/installs), the JAVA_HOME
+# symlink and the mise.toml everything resolves against. The builder's trust
+# record does not survive the stage copy, so re-trust the config here —
+# without it `mise install` on an untrusted config refuses to run
+# (test/tools-offline.sh does exactly that, with no network).
+WORKDIR /opt/neinache
+COPY --from=builder /mise/installs /mise/installs
+COPY --from=builder /mise/shims /mise/shims
+COPY --from=builder /opt/neinache /opt/neinache
+RUN mise trust /opt/neinache/mise.toml
+
+ENV JAVA_HOME=/opt/neinache/java-home \
+    VIRTUAL_ENV=/opt/pre-commit-venv \
+    PRE_COMMIT_HOME=/opt/pre-commit-home
+
+# pre-commit venv + baked hook environment, at the same absolute paths the
+# builder created them.
+COPY --from=builder /opt/pre-commit-venv /opt/pre-commit-venv
+COPY --from=builder /opt/pre-commit-home /opt/pre-commit-home
+
+# venv bin first so `pre-commit` resolves to the baked one; then the real tool
+# symlinks; the mise shims of the base image PATH stay behind both.
+ENV PATH="/opt/pre-commit-venv/bin:/opt/neinache/bin:/opt/neinache/java-home/bin:${PATH}"
 
 WORKDIR /
