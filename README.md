@@ -1,7 +1,5 @@
 # neinache-ci-tools
 
-> **Archived 2026-11-05.** The image is now built in the neinache repository itself from `dependencies.d/` (GitLab CI, see [ADR-0094](https://gitlab.com/HubbitusFamily/neinache/-/blob/main/docs/architecture/decisions/0094-ci-tools-image-gitlab-ci.md)): the manual copy of `mise.toml` kept drifting, and every bump was a two-repository ceremony. This repository is kept read-only for history; its tags on [Docker Hub](https://hub.docker.com/r/hubbitus/neinache-ci-tools) (`1.14.0-*`, short-sha) remain pullable but are no longer updated — new tags follow the `{date}-{tree-hash}` scheme built from `dependencies.d/`.
-
 Tools image for the neinache CI. Debian image with every tool from neinache's `mise.toml` `[tools]` table already installed, plus `jq`, `git`, `openssl` and [pre-commit](https://pre-commit.com) with a prebuilt hook environment. Jobs do not download the toolchain at start.
 
 Published as [`docker.io/hubbitus/neinache-ci-tools`](https://hub.docker.com/r/hubbitus/neinache-ci-tools).
